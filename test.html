@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather & Location Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+    
+    body {
+      font-family: 'Poppins', sans-serif;
+      color: white;
+    }
+    
+    .bg-blur::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      backdrop-filter: blur(8px);
+      z-index: 1;
+      background: rgba(0, 0, 0, 0.3);
+    }
+    
+    #backgroundVideo,
+    #backgroundImage {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    
+    #threejs-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+    }
+    
+    .weather-card {
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+    
+    .weather-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+    }
+    
+    .forecast-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(5px);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    
+    .forecast-card:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-3px);
+    }
+    
+    .toggle-checkbox:checked {
+      right: 0;
+      background-color: #4a5568;
+    }
+    
+    .toggle-checkbox:checked + .toggle-label {
+      background-color: #2d3748;
+    }
+    
+    /* Snow/Rain effects */
+    .snowflake, .raindrop {
+      position: absolute;
+      pointer-events: none;
+      z-index: 5;
+    }
+    
+    .snowflake {
+      color: white;
+      opacity: 0.8;
+    }
+    
+    .raindrop {
+      background: linear-gradient(transparent, rgba(174, 194, 224, 0.8));
+      width: 1px;
+    }
+  </style>
+</head>
+<body class="relative min-h-screen flex items-center justify-center p-4 overflow-hidden bg-gray-900">
+
+  <!-- Dark mode toggle -->
+  <div class="absolute top-4 right-4 z-30">
+    <div class="relative inline-block w-12 mr-2 align-middle select-none">
+      <input type="checkbox" name="toggle" id="toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+      <label for="toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+    </div>
+    <label for="toggle" class="text-white text-sm font-medium">Dark Mode</label>
+  </div>
+
+  <!-- Background containers -->
+  <div id="threejs-container"></div>
+  <video id="backgroundVideo" autoplay muted loop class="hidden"></video>
+  <div id="backgroundImage" class="hidden bg-center bg-cover"></div>
+  <div class="absolute inset-0 bg-blur z-10"></div>
+
+  <!-- Main content -->
+  <div class="relative z-20 w-full max-w-4xl mx-4">
+    <!-- Current weather -->
+    <div id="weatherCard" class="weather-card p-8 w-full text-center hidden">
+      <h1 class="text-3xl md:text-4xl font-bold mb-2" id="location"></h1>
+      <div class="flex justify-center items-center my-4">
+        <div id="weatherIcon" class="text-6xl md:text-8xl mr-4"></div>
+        <p class="text-6xl md:text-8xl font-semibold" id="temperature"></p>
+      </div>
+      <p class="text-xl md:text-2xl mb-4" id="condition"></p>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <p class="text-sm opacity-80">Wind</p>
+          <p class="text-xl font-medium" id="wind"></p>
+        </div>
+        <div>
+          <p class="text-sm opacity-80">Humidity</p>
+          <p class="text-xl font-medium" id="humidity"></p>
+        </div>
+        <div>
+          <p class="text-sm opacity-80">Pressure</p>
+          <p class="text-xl font-medium" id="pressure"></p>
+        </div>
+      </div>
+      <p class="mt-6 text-sm opacity-70" id="date"></p>
+    </div>
+
+    <!-- 3-day forecast -->
+    <div id="forecastContainer" class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 hidden">
+      <div class="forecast-card p-4 text-center">
+        <p class="font-medium text-lg" id="day1"></p>
+        <div id="forecastIcon1" class="text-4xl my-3"></div>
+        <div class="flex justify-center gap-4">
+          <span class="font-bold" id="tempMax1"></span>
+          <span class="opacity-70" id="tempMin1"></span>
+        </div>
+      </div>
+      <div class="forecast-card p-4 text-center">
+        <p class="font-medium text-lg" id="day2"></p>
+        <div id="forecastIcon2" class="text-4xl my-3"></div>
+        <div class="flex justify-center gap-4">
+          <span class="font-bold" id="tempMax2"></span>
+          <span class="opacity-70" id="tempMin2"></span>
+        </div>
+      </div>
+      <div class="forecast-card p-4 text-center">
+        <p class="font-medium text-lg" id="day3"></p>
+        <div id="forecastIcon3" class="text-4xl my-3"></div>
+        <div class="flex justify-center gap-4">
+          <span class="font-bold" id="tempMax3"></span>
+          <span class="opacity-70" id="tempMin3"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Enhanced weather descriptions with more emojis
+    const weatherDescriptions = {
+      0: { text: "Clear sky", emoji: "☀️", threejs: "sunny" },
+      1: { text: "Mainly clear", emoji: "🌤️", threejs: "partlyCloudy" },
+      2: { text: "Partly cloudy", emoji: "⛅️", threejs: "partlyCloudy" },
+      3: { text: "Overcast", emoji: "☁️", threejs: "cloudy" },
+      45: { text: "Fog", emoji: "🌫️", threejs: "foggy" },
+      48: { text: "Rime fog", emoji: "🌫️", threejs: "foggy" },
+      51: { text: "Light drizzle", emoji: "🌦️", threejs: "rainy" },
+      53: { text: "Moderate drizzle", emoji: "🌧️", threejs: "rainy" },
+      55: { text: "Dense drizzle", emoji: "🌧️", threejs: "rainy" },
+      61: { text: "Slight rain", emoji: "🌦️", threejs: "rainy" },
+      63: { text: "Moderate rain", emoji: "🌧️", threejs: "rainy" },
+      65: { text: "Heavy rain", emoji: "🌧️", threejs: "rainy" },
+      71: { text: "Slight snow", emoji: "🌨️", threejs: "snowy" },
+      73: { text: "Moderate snow", emoji: "❄️", threejs: "snowy" },
+      75: { text: "Heavy snow", emoji: "❄️", threejs: "snowy" },
+      80: { text: "Rain showers", emoji: "🌧️", threejs: "rainy" },
+      81: { text: "Moderate showers", emoji: "🌧️", threejs: "rainy" },
+      82: { text: "Violent showers", emoji: "🌧️", threejs: "rainy" },
+      95: { text: "Thunderstorm", emoji: "⛈️", threejs: "stormy" },
+      96: { text: "Thunderstorm with hail", emoji: "⛈️", threejs: "stormy" },
+      99: { text: "Severe thunderstorm", emoji: "⛈️", threejs: "stormy" }
+    };
+
+    // Three.js background configurations
+    const threejsScenes = {
+      sunny: {
+        skyColor: 0x87CEEB,
+        fogColor: 0x87CEEB,
+        fogDensity: 0.0005,
+        elements: [
+          { type: "sun", size: 5, color: 0xFFFF00, position: { x: 50, y: 50, z: -100 } }
+        ]
+      },
+      partlyCloudy: {
+        skyColor: 0xB0C4DE,
+        fogColor: 0xB0C4DE,
+        fogDensity: 0.001,
+        elements: [
+          { type: "sun", size: 4, color: 0xFFFACD, position: { x: 30, y: 40, z: -80 } },
+          { type: "cloud", count: 8, size: 3, color: 0xFFFFFF, spread: 100 }
+        ]
+      },
+      cloudy: {
+        skyColor: 0x778899,
+        fogColor: 0x778899,
+        fogDensity: 0.002,
+        elements: [
+          { type: "cloud", count: 15, size: 4, color: 0xE6E6FA, spread: 150 }
+        ]
+      },
+      foggy: {
+        skyColor: 0xD3D3D3,
+        fogColor: 0xD3D3D3,
+        fogDensity: 0.01,
+        elements: []
+      },
+      rainy: {
+        skyColor: 0x4682B4,
+        fogColor: 0x4682B4,
+        fogDensity: 0.003,
+        elements: [
+          { type: "cloud", count: 10, size: 5, color: 0xA9A9A9, spread: 120 }
+        ]
+      },
+      snowy: {
+        skyColor: 0xB0E0E6,
+        fogColor: 0xB0E0E6,
+        fogDensity: 0.002,
+        elements: [
+          { type: "cloud", count: 12, size: 4, color: 0xF8F8FF, spread: 130 }
+        ]
+      },
+      stormy: {
+        skyColor: 0x2F4F4F,
+        fogColor: 0x2F4F4F,
+        fogDensity: 0.005,
+        elements: [
+          { type: "cloud", count: 15, size: 6, color: 0x696969, spread: 150 }
+        ]
+      }
+    };
+
+    // Three.js variables
+    let scene, camera, renderer;
+    let weatherObjects = [];
+
+    // Initialize Three.js scene
+    function initThreeJS(weatherType) {
+      const container = document.getElementById('threejs-container');
+      
+      // Clear previous scene if it exists
+      while(container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      
+      const config = threejsScenes[weatherType] || threejsScenes.sunny;
+      
+      // Create scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(config.skyColor);
+      scene.fog = new THREE.FogExp2(config.fogColor, config.fogDensity);
+      
+      // Create camera
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.z = 30;
+      
+      // Create renderer
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+      
+      // Add weather elements
+      weatherObjects = [];
+      config.elements.forEach(element => {
+        if (element.type === "sun") {
+          const sunGeometry = new THREE.SphereGeometry(element.size, 32, 32);
+          const sunMaterial = new THREE.MeshBasicMaterial({ color: element.color });
+          const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+          sun.position.set(element.position.x, element.position.y, element.position.z);
+          scene.add(sun);
+          weatherObjects.push(sun);
+        } else if (element.type === "cloud") {
+          for (let i = 0; i < element.count; i++) {
+            const cloud = createCloud(element.size, element.color, element.spread);
+            scene.add(cloud);
+            weatherObjects.push(cloud);
+          }
+        }
+      });
+      
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+        
+        // Rotate weather objects for some movement
+        weatherObjects.forEach(obj => {
+          obj.rotation.x += 0.001;
+          obj.rotation.y += 0.001;
+        });
+        
+        renderer.render(scene, camera);
+      }
+      
+      animate();
+      
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+    
+    // Helper function to create a cloud
+    function createCloud(size, color, spread) {
+      const cloud = new THREE.Group();
+      
+      // Create several spheres to form a cloud
+      const cloudParts = Math.floor(Math.random() * 3) + 3;
+      for (let i = 0; i < cloudParts; i++) {
+        const partSize = size * (0.7 + Math.random() * 0.6);
+        const geometry = new THREE.SphereGeometry(partSize, 8, 8);
+        const material = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 });
+        const part = new THREE.Mesh(geometry, material);
+        
+        // Position parts randomly around the center
+        part.position.x = (Math.random() - 0.5) * spread;
+        part.position.y = (Math.random() - 0.5) * spread;
+        part.position.z = (Math.random() - 0.5) * spread;
+        
+        cloud.add(part);
+      }
+      
+      return cloud;
+    }
+
+    // Create weather effects (rain/snow)
+    function createWeatherEffect(type, intensity = 50) {
+      // Clear any existing effects
+      const existingEffects = document.querySelectorAll('.snowflake, .raindrop');
+      existingEffects.forEach(el => el.remove());
+      
+      if (type === 'snow') {
+        for (let i = 0; i < intensity; i++) {
+          createSnowflake();
+        }
+      } else if (type === 'rain') {
+        for (let i = 0; i < intensity; i++) {
+          createRaindrop();
+        }
+      }
+    }
+    
+    function createSnowflake() {
+      const snowflake = document.createElement('div');
+      snowflake.className = 'snowflake';
+      snowflake.innerHTML = '❄';
+      snowflake.style.left = Math.random() * window.innerWidth + 'px';
+      snowflake.style.top = -20 + 'px';
+      snowflake.style.fontSize = (10 + Math.random() * 20) + 'px';
+      snowflake.style.opacity = Math.random();
+      document.body.appendChild(snowflake);
+      
+      animateSnowflake(snowflake);
+    }
+    
+    function animateSnowflake(element) {
+      let posY = parseFloat(element.style.top);
+      let posX = parseFloat(element.style.left);
+      const angle = Math.random() * Math.PI * 2;
+      let angleIncrement = (Math.random() - 0.5) * 0.2;
+      const speed = 1 + Math.random() * 3;
+      
+      function frame() {
+        posY += speed;
+        posX += Math.sin(angle) * 2;
+        angleIncrement += (Math.random() - 0.5) * 0.01;
+        
+        element.style.top = posY + 'px';
+        element.style.left = posX + 'px';
+        element.style.transform = `rotate(${angleIncrement}rad)`;
+        
+        if (posY > window.innerHeight) {
+          element.style.top = -20 + 'px';
+          element.style.left = Math.random() * window.innerWidth + 'px';
+          posY = -20;
+          posX = parseFloat(element.style.left);
+        }
+        
+        requestAnimationFrame(frame);
+      }
+      
+      frame();
+    }
+    
+    function createRaindrop() {
+      const raindrop = document.createElement('div');
+      raindrop.className = 'raindrop';
+      raindrop.style.left = Math.random() * window.innerWidth + 'px';
+      raindrop.style.top = -20 + 'px';
+      raindrop.style.height = (10 + Math.random() * 20) + 'px';
+      document.body.appendChild(raindrop);
+      
+      animateRaindrop(raindrop);
+    }
+    
+    function animateRaindrop(element) {
+      let posY = parseFloat(element.style.top);
+      const speed = 5 + Math.random() * 10;
+      
+      function frame() {
+        posY += speed;
+        element.style.top = posY + 'px';
+        
+        if (posY > window.innerHeight) {
+          element.style.top = -20 + 'px';
+          posY = -20;
+        }
+        
+        requestAnimationFrame(frame);
+      }
+      
+      frame();
+    }
+
+    // Dark mode toggle
+    document.getElementById('toggle').addEventListener('change', function() {
+      document.body.classList.toggle('bg-gray-900');
+      document.body.classList.toggle('bg-gray-100');
+      
+      const weatherCard = document.getElementById('weatherCard');
+      if (weatherCard) {
+        weatherCard.classList.toggle('bg-white/70');
+        weatherCard.classList.toggle('bg-black/50');
+      }
+      
+      const forecastCards = document.querySelectorAll('.forecast-card');
+      forecastCards.forEach(card => {
+        card.classList.toggle('bg-white/10');
+        card.classList.toggle('bg-black/20');
+      });
+    });
+
+    async function getUserLocationAndWeather() {
+      try {
+        // Get location
+        const locRes = await fetch("https://ipapi.co/json/");
+        const locData = await locRes.json();
+        const { city, country_name, latitude, longitude } = locData;
+        document.getElementById("location").textContent = `${city}, ${country_name}`;
+        
+        // Get current weather
+        const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=temperature_2m,relativehumidity_2m,pressure_msl&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`);
+        const weatherData = await weatherRes.json();
+        const weather = weatherData.current_weather;
+        
+        // Get forecast data
+        const forecast = {
+          day1: {
+            date: weatherData.daily.time[1],
+            weathercode: weatherData.daily.weathercode[1],
+            tempMax: weatherData.daily.temperature_2m_max[1],
+            tempMin: weatherData.daily.temperature_2m_min[1]
+          },
+          day2: {
+            date: weatherData.daily.time[2],
+            weathercode: weatherData.daily.weathercode[2],
+            tempMax: weatherData.daily.temperature_2m_max[2],
+            tempMin: weatherData.daily.temperature_2m_min[2]
+          },
+          day3: {
+            date: weatherData.daily.time[3],
+            weathercode: weatherData.daily.weathercode[3],
+            tempMax: weatherData.daily.temperature_2m_max[3],
+            tempMin: weatherData.daily.temperature_2m_min[3]
+          }
+        };
+        
+        // Update current weather display
+        const weatherInfo = weatherDescriptions[weather.weathercode] || { text: `Unknown (code ${weather.weathercode})`, emoji: "❓", threejs: "sunny" };
+        document.getElementById("temperature").textContent = `${Math.round(weather.temperature)}°C`;
+        document.getElementById("condition").textContent = `${weatherInfo.text} ${weatherInfo.emoji}`;
+        document.getElementById("weatherIcon").textContent = weatherInfo.emoji;
+        document.getElementById("wind").textContent = `${Math.round(weather.windspeed)} km/h`;
+        
+        // Get humidity and pressure from hourly data (closest to current time)
+        const now = new Date();
+        const currentHour = now.getHours();
+        document.getElementById("humidity").textContent = `${weatherData.hourly.relativehumidity_2m[currentHour]}%`;
+        document.getElementById("pressure").textContent = `${Math.round(weatherData.hourly.pressure_msl[currentHour])} hPa`;
+        
+        document.getElementById("date").textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        // Update forecast display
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        for (let i = 1; i <= 3; i++) {
+          const dayData = forecast[`day${i}`];
+          const dayDate = new Date(dayData.date);
+          const dayInfo = weatherDescriptions[dayData.weathercode] || { emoji: "❓" };
+          
+          document.getElementById(`day${i}`).textContent = days[dayDate.getDay()];
+          document.getElementById(`forecastIcon${i}`).textContent = dayInfo.emoji;
+          document.getElementById(`tempMax${i}`).textContent = `${Math.round(dayData.tempMax)}°`;
+          document.getElementById(`tempMin${i}`).textContent = `${Math.round(dayData.tempMin)}°`;
+        }
+        
+        // Set up visual effects based on weather
+        initThreeJS(weatherInfo.threejs);
+        
+        if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(weather.weathercode)) {
+          createWeatherEffect('rain', 100);
+        } else if ([71, 73, 75].includes(weather.weathercode)) {
+          createWeatherEffect('snow', 50);
+        }
+        
+        // Show all elements
+        document.getElementById("weatherCard").classList.remove("hidden");
+        document.getElementById("forecastContainer").classList.remove("hidden");
+      } catch (error) {
+        alert("Error fetching data. Please try again later.");
+        console.error(error);
+      }
+    }
+
+    // Initialize the app
+    getUserLocationAndWeather();
+  </script>
+</body>
+</html>
